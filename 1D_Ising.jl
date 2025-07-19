@@ -107,16 +107,33 @@ function find_coeffs(β)
     hs = zeros(5, 5)
 
     σ_E = 1.0/β
-    omegas = LinRange(-10.0, 10.0, 2001)
+    dω = .01
+    bound = max(10.0, 10*σ_E)
+    ωs = collect(LinRange(-bound, bound, 2*Int(bound/dω) + 1))
+
+    # Metropolis-like filter
+    γs = ωs .+ β*σ_E^2/2
+    γs[ωs .< -β*σ_E^2/2] .= 0.0
+    γs = exp.(-β .* γs)
 
     for i in 1:5
         for j in 1:5
             ν1 = 2*(i - 3)
             ν2 = 2*(j - 3)
 
-            
+            gauss1 = exp.(-(ωs .- ν1).^2 / (4 * σ_E^2))
+            gauss2 = exp.(-(ωs .- ν2).^2 / (4 * σ_E^2))
+
+            alphas[i,j] = sum(gauss1 .* gauss2 .* γs) * dω / (2 * σ_E * sqrt(2*π))
+            hs[i,j] = alphas[i,j] * exp(β*(ν1 + ν2) / 4)
         end
     end
+
+    # Remove small coefficients
+    eps = 1e-10
+    alphas[abs.(alphas) .< eps] .= 0.0
+    hs[abs.(hs) .< eps] .= 0.0
+    return alphas, hs
 end
 
 function parent_hamiltonian(L, alphas, hs)
@@ -283,6 +300,26 @@ function parent_hamiltonian(L, alphas, hs)
     return os
 end
 
-function main()
+function main(L=64, maxdim=64, cutoff=1e-10, nsweeps=10)
+    sites = siteinds("doubled", L; conserve_qns=false)
 
+    βs = LinRange(0.01, 2.0, 21)
+    for β in βs
+        alphas, hs = find_coeffs(β)
+        H = cu(MPO(parent_hamiltonian(L, alphas, hs), sites))
+
+        state = ["InfMixed" for i=1:L]
+        psi0 = cu(MPS(sites, state))
+
+        E0, psi0 = dmrg(-H, psi0; nsweeps=nsweeps, maxdim=maxdim, cutoff=cutoff)
+        E0 = inner(psi0', H, psi0)
+
+        psi1 = cu(randomMPS(sites))
+        weight = 10.0 * alphas[3,3]
+        E1, psi1 = dmrg(-H, [psi0], psi1; nsweeps=nsweeps, weight=weight, maxdim=maxdim, cutoff=cutoff)
+        E1 = inner(psi1', H, psi1)
+
+        println(inner(psi1,psi0))
+        println("β: $β, E0: $E0, E1: $E1")
+    end
 end
