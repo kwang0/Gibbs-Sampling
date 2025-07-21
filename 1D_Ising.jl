@@ -103,13 +103,14 @@ ITensors.op(::OpName"Id",::SiteType"doubled") =
    0   0   0   1]
 
 function find_coeffs(β)
-    alphas = zeros(5, 5)
+    alphas = zeros(5, 5) # ν ∈ [-4, -2, 0, 2, 4]
     hs = zeros(5, 5)
 
     σ_E = 1.0/β
     dω = .01
     bound = max(10.0, 10*σ_E)
-    ωs = collect(LinRange(-bound, bound, 2*Int(bound/dω) + 1))
+    ωs = collect(LinRange(-bound, bound, 2*round(Int64, bound/dω) + 1))
+    dω = ωs[2] - ωs[1]
 
     # Metropolis-like filter
     γs = ωs .+ β*σ_E^2/2
@@ -300,10 +301,12 @@ function parent_hamiltonian(L, alphas, hs)
     return os
 end
 
-function main(L=64, maxdim=64, cutoff=1e-10, nsweeps=10)
+function main(L=64, maxdim=128, cutoff=1e-10, nsweeps=10)
     sites = siteinds("doubled", L; conserve_qns=false)
 
-    βs = LinRange(0.01, 2.0, 21)
+    βs = collect(LinRange(0.01, 2.0, 21))
+    E0s = Float64[]
+    E1s = Float64[]
     for β in βs
         alphas, hs = find_coeffs(β)
         H = cu(MPO(parent_hamiltonian(L, alphas, hs), sites))
@@ -321,5 +324,9 @@ function main(L=64, maxdim=64, cutoff=1e-10, nsweeps=10)
 
         println(inner(psi1,psi0))
         println("β: $β, E0: $E0, E1: $E1")
+
+        push!(E0s, E0)
+        push!(E1s, E1)
     end
+    return βs, E0s, E1s
 end
