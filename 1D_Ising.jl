@@ -1,6 +1,6 @@
 using ITensors
 using ITensorMPS
-using CUDA
+# using CUDA
 
 # Representation of two qubits coarse-grained onto doubled Hilbert space
 # Convention is (|up,up>, |up,down>, |down,up>, |down,down>)
